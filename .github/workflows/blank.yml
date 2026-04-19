@@ -29,8 +29,17 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew assembleDebug
 
+      - name: Build Release APK (unsigned)
+        run: ./gradlew assembleRelease
+
       - name: Upload Debug APK
         uses: actions/upload-artifact@v5
         with:
           name: MIUI-IME-Unlock-Debug-APK
-          path: app/build/outputs/apk/debug/*.apk  # 通配符，彻底解决找不到文件
+          path: app/build/outputs/apk/debug/*.apk  # Wildcard pattern ensures APK is found
+
+      - name: Upload Release APK (unsigned)
+        uses: actions/upload-artifact@v5
+        with:
+          name: MIUI-IME-Unlock-Release-APK-Unsigned
+          path: app/build/outputs/apk/release/*.apk
