@@ -29,7 +29,7 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew assembleDebug
 
-      - name: Build Release APK
+      - name: Build Release APK (unsigned)
         run: ./gradlew assembleRelease
 
       - name: Upload Debug APK
@@ -38,8 +38,8 @@ jobs:
           name: MIUI-IME-Unlock-Debug-APK
           path: app/build/outputs/apk/debug/*.apk  # 通配符，彻底解决找不到文件
 
-      - name: Upload Release APK
+      - name: Upload Release APK (unsigned)
         uses: actions/upload-artifact@v5
         with:
-          name: MIUI-IME-Unlock-Release-APK
+          name: MIUI-IME-Unlock-Release-APK-Unsigned
           path: app/build/outputs/apk/release/*.apk
