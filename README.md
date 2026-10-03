@@ -18,6 +18,21 @@
 
 ---
 
+## 此 Fork 与 1.28.1 更新
+
+此仓库属于原项目的 Fork 网络，沿用 AGPL-3.0 许可证。本次修复基于 [NEORUAA/WeType_UI_Enhanced](https://github.com/NEORUAA/WeType_UI_Enhanced) 上游 `f863450` 的 1.28.0 源码；`main` 为本 Fork 的发布分支。本次发布不包含上游此后新增的 SVG 图标功能及其他尚未在本 Fork 验证的改动。
+
+1.28.1（versionCode 36）包含以下修复：
+
+- 修复微信输入法 Tinker 热修复启用后，模块使用原 APK 类加载器而导致候选词背景圆角等 hook 未生效的问题。宿主 hook 在 `Application.attach` 完成后使用实际的 `Context.classLoader` 安装，热重载也沿用该加载器。
+- 修复键盘重新布局时过早清空美化背景的问题，区分等待布局、实际隐藏和有效背景更新三种状态。
+- 使用绘制合成替代旧的浮层显隐干预，处理透明设置页、表情和剪贴板等页面透出底层内容的问题。遮挡强度跟随宿主透明度变化，不修改宿主的显隐、位移或动画时长。
+- 保留键盘选择页共用的返回控件与导航区域，避免整块候选栏被误遮挡。
+- 为高级材质的 `RuntimeShader` 几何更新补充 Android 13 / API 33 检查。
+- 保留本 Fork 的自定义字体资源。
+
+本轮在微信输入法 **3.5.4（57201）** 上验证了候选背景圆角 0 / 60、键盘选择页返回控件，并收到设置与动画恢复正常的实机反馈；其他输入法版本和 ROM 的兼容性需要分别验证。源码包含 53 个通过的单元测试，覆盖背景状态、遮挡关系、导航区域和进入 / 退出透明度变化。1.28.1 安装包与已验证的修复代码一致，仅更新发布版本号及文档，未再次安装到测试手机。
+
 ## 功能
 
 ### 微信输入法美化
@@ -94,7 +109,25 @@ MIUI / HyperOS 相关附加功能仅针对小米系统，不适用于其他厂�
 
 ## 下载
 
-请前往本仓库或下方模块仓库的 Releases 下载最新版本。
+请前往 [本 Fork 的 Releases](https://github.com/Sunshine-zxw/WeType_UI_Universal/releases) 下载。
+
+- `WeType_UI_Enhanced-1.28.1_release.apk`：启用代码和资源压缩，供日常使用。
+- `WeType_UI_Enhanced-1.28.1_debug.apk`：可调试构建，供开发和问题排查；不包含本次开发过程中的临时探针。
+- `SHA256SUMS.txt`：两个安装包的 SHA256 校验值。
+
+本 Fork 的 1.28.1 debug 与 release 安装包使用同一个本机测试证书签名，与本轮调试安装包的证书一致；它不是上游作者的正式发行证书。从上游正式包升级时，普通设备可能无法直接覆盖安装。请先确认签名兼容性并保留设置备份。
+
+### 从源码构建
+
+需要 JDK 21、Android SDK Platform 37 和项目自带的 Gradle Wrapper：
+
+```sh
+./gradlew :app:assembleDebug :app:assembleRelease :app:testDebugUnitTest :app:lintRelease
+```
+
+产物位于 `app/build/outputs/apk/debug/` 与 `app/build/outputs/apk/release/`。debug 构建自动使用本机 debug keystore；release 构建需使用自己的密钥通过 `apksigner` 签名。仓库不包含签名私钥、设备日志、交接文档、录屏或诊断安装包。
+
+上游下载渠道：
 
 Xposed 模块仓库：https://github.com/Xposed-Modules-Repo/com.xposed.wetypehook
 

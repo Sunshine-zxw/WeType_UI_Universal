@@ -13,3 +13,13 @@ local.properties
 .settings
 *.log
 /wetype_work_space
+
+# Local diagnostics and release artifacts are not source files.
+*.apk
+*.idsig
+*.mp4
+*.jks
+*.keystore
+/HANDOFF.md
+/docs/root-cause-repair.md
+/release-artifacts/

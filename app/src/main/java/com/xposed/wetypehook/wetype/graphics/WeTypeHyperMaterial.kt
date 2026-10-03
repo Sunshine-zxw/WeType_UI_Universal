@@ -120,6 +120,8 @@ internal class WeTypeHyperMaterial(
     }
 
     fun updateGeometry(cornerRadii: WeTypeCornerRadii) {
+        // Geometry uses RuntimeShader, independently of the material availability cache.
+        if (Build.VERSION.SDK_INT < 33) return
         val style = appliedStyle ?: return
         val parent = view.parent as? ViewGroup ?: return
         if (view.width <= 0 || view.height <= 0) return
