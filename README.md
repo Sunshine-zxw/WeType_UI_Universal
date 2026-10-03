@@ -18,9 +18,11 @@
 
 ---
 
-## 此 Fork 与 1.28.1 更新
+## 此 Fork 与 1.28.2 测试版
 
-此仓库属于原项目的 Fork 网络，沿用 AGPL-3.0 许可证。本次修复基于 [NEORUAA/WeType_UI_Enhanced](https://github.com/NEORUAA/WeType_UI_Enhanced) 上游 `f863450` 的 1.28.0 源码；`main` 为本 Fork 的发布分支。本次发布不包含上游此后新增的 SVG 图标功能及其他尚未在本 Fork 验证的改动。
+此仓库属于原项目的 Fork 网络，沿用 AGPL-3.0 许可证。`main` 为本 Fork 的发布分支。1.28.1 基于 [NEORUAA/WeType_UI_Enhanced](https://github.com/NEORUAA/WeType_UI_Enhanced) 上游 `f863450` 的 1.28.0 源码；1.28.2（versionCode 37）将本次修复适配到上游 `b4f3060`，包含其新增 SVG 图标功能、性能优化及剪贴板清空确认页处理，并保留本 Fork 自定义字体。
+
+1.28.2 为待实机确认的测试版，debug / release 构建与 89 个单元测试通过。适配保留上游的可选 getInputView 缓存和普通背景复用，并补充清空确认页的绘制遮挡；同时修正 SVG 导入提示通过 LocalContext 读取资源的 Compose lint 错误。此版本尚未进行实机回归，请验证翻译 / AI 展开、键盘选择页进出和剪贴板清空确认。上游 PR 当前关闭，待使用者确认后再提交。
 
 1.28.1（versionCode 36）包含以下修复：
 
@@ -111,11 +113,11 @@ MIUI / HyperOS 相关附加功能仅针对小米系统，不适用于其他厂�
 
 请前往 [本 Fork 的 Releases](https://github.com/Sunshine-zxw/WeType_UI_Universal/releases) 下载。
 
-- `WeType_UI_Enhanced-1.28.1_release.apk`：启用代码和资源压缩，供日常使用。
-- `WeType_UI_Enhanced-1.28.1_debug.apk`：可调试构建，供开发和问题排查；不包含本次开发过程中的临时探针。
+- `WeType_UI_Enhanced-1.28.2_release.apk`：启用代码和资源压缩，供本次实机回归测试。
+- `WeType_UI_Enhanced-1.28.2_debug.apk`：可调试构建，供开发和问题排查；不包含本次开发过程中的临时探针。
 - `SHA256SUMS.txt`：两个安装包的 SHA256 校验值。
 
-本 Fork 的 1.28.1 debug 与 release 安装包使用同一个本机测试证书签名，与本轮调试安装包的证书一致；它不是上游作者的正式发行证书。从上游正式包升级时，普通设备可能无法直接覆盖安装。请先确认签名兼容性并保留设置备份。
+本 Fork 的 1.28.1 / 1.28.2 debug 与 release 安装包使用同一个本机测试证书签名，与本轮调试安装包的证书一致；它不是上游作者的正式发行证书。已核对上游 1.28.0 与本 Fork 的证书不同，普通设备不能从上游正式包直接覆盖安装本 Fork；已经安装本 Fork 同证书版本的用户可以覆盖更新。若需向上游用户提供直接更新，需要由上游维护者使用原签名证书重新构建签名。
 
 ### 从源码构建
 

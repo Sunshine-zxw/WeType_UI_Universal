@@ -2,6 +2,7 @@ package com.xposed.wetypehook
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.content.res.AssetManager
 import android.content.res.Configuration
 import android.content.res.Resources
@@ -335,6 +336,7 @@ class MainHook : XposedModule() {
         HookEnvironment.withHookScope("wetype.window-blur") { hookWeTypeWindowBlur() }
         HookEnvironment.withHookScope("wetype.disable-update") { hookWeTypeDisableHotUpdate() }
         HookEnvironment.withHookScope("wetype.intent-entry") { hookWeTypeIntentEntry() }
+        HookEnvironment.withHookScope("wetype.activity-result") { hookWeTypeActivityResultEntry() }
         HookEnvironment.withHookScope("wetype.about-entry") { hookWeTypeAboutLogoEntry() }
         HookEnvironment.withHookScope("wetype.keyboard-logo") { WeTypeResourceHooks.hookKeyboardLogo() }
         HookEnvironment.withHookScope("wetype.toolbar-icon") { WeTypeResourceHooks.hookToolbarIconBackground() }
@@ -356,8 +358,8 @@ class MainHook : XposedModule() {
                 name == "loadDex" && parameterTypes.sameAs(ClassLoader::class.java, String::class.java)
             }.hookBefore { param ->
                 runCatching {
-                    val targetClassLoader = param.args[0] as? ClassLoader ?: return@runCatching
-                    val dexPath = param.args[1] as? String ?: return@runCatching
+                    val targetClassLoader = param[0] as? ClassLoader ?: return@runCatching
+                    val dexPath = param[1] as? String ?: return@runCatching
                     if (targetClassLoader !is BaseDexClassLoader) return@runCatching
 
                     if (!isBottomManagerLoaded(targetClassLoader)) {
@@ -417,10 +419,10 @@ class MainHook : XposedModule() {
                     View::class.java.isAssignableFrom(parameterTypes[4]) &&
                     View::class.java.isAssignableFrom(parameterTypes[5])
             }.hookAfter { param ->
-                val fullscreenArea = param.args.getOrNull(2) as? ViewGroup ?: return@hookAfter
-                val inputFrame = param.args.getOrNull(3) as? ViewGroup ?: return@hookAfter
-                val rootView = param.args.getOrNull(4) as? View ?: return@hookAfter
-                val bottomArea = param.args.getOrNull(5) as? View ?: return@hookAfter
+                val fullscreenArea = param.argumentOrNull(2) as? ViewGroup ?: return@hookAfter
+                val inputFrame = param.argumentOrNull(3) as? ViewGroup ?: return@hookAfter
+                val rootView = param.argumentOrNull(4) as? View ?: return@hookAfter
+                val bottomArea = param.argumentOrNull(5) as? View ?: return@hookAfter
                 registerMiuiBottomFrame(fullscreenArea, inputFrame, rootView, bottomArea)
             }
             true
@@ -652,7 +654,7 @@ class MainHook : XposedModule() {
         findMethod("android.app.Application") {
             name == "attach" && parameterTypes.sameAs(Context::class.java)
         }.hookAfter { param ->
-            val context = param.args[0] as? Context ?: return@hookAfter
+            val context = param[0] as? Context ?: return@hookAfter
             WeTypeSettings.ensureHostSnapshot(context)
             notifyActivationHeartbeat(context, sourcePackage)
         }
@@ -742,6 +744,21 @@ class MainHook : XposedModule() {
             }
         }.onFailure {
             Log.e("Failed:Hook WeType intent entry")
+            Log.i(it)
+        }
+    }
+
+    private fun hookWeTypeActivityResultEntry() {
+        runCatching {
+            findMethod("android.app.Activity") {
+                name == "onActivityResult" && parameterTypes.size == 3
+            }.hookAfter { param ->
+                val requestCode = param.args[0] as? Int ?: return@hookAfter
+                val resultCode = param.args[1] as? Int ?: return@hookAfter
+                HostActivityResultBridge.dispatch(requestCode, resultCode, param.args[2] as? Intent)
+            }
+        }.onFailure {
+            Log.e("Failed:Hook WeType activity result entry")
             Log.i(it)
         }
     }
@@ -867,8 +884,8 @@ class MainHook : XposedModule() {
             }
             setNavigationBarColorMethod.hookBefore { param ->
                 if (forceTransparent) {
-                    bottomViewSourceColor = param.args[0] as? Int
-                    param.args[0] = Color.TRANSPARENT
+                    bottomViewSourceColor = param[0] as? Int
+                    param[0] = Color.TRANSPARENT
                 }
             }
             setNavigationBarColorMethod.hookAfter { param ->
@@ -877,16 +894,16 @@ class MainHook : XposedModule() {
                     customizeBottomViewColor(clazz, true)
                     return@hookAfter
                 }
-                if (param.args[0] == 0) return@hookAfter
+                if (param[0] == 0) return@hookAfter
 
-                navBarColor = param.args[0] as Int
+                navBarColor = param[0] as Int
                 customizeBottomViewColor(clazz, false)
             }
 
             clazz.findMethod { name == "customizeBottomViewColor" }.hookBefore { param ->
                 if (!forceTransparent) return@hookBefore
-                if (param.args.size > 1 && param.args[1] is Int) {
-                    param.args[1] = Color.TRANSPARENT
+                if (param.argumentCount > 1 && param[1] is Int) {
+                    param[1] = Color.TRANSPARENT
                 }
             }
 
@@ -959,8 +976,8 @@ class MainHook : XposedModule() {
                 name == "isCallingBetweenCustomIME"
             }.hookAfter { param ->
                 if (param.result == true) return@hookAfter
-                val context = param.args[0] as? Context ?: return@hookAfter
-                val uid = param.args[1] as? Int ?: return@hookAfter
+                val context = param[0] as? Context ?: return@hookAfter
+                val uid = param[1] as? Int ?: return@hookAfter
                 val currentInputMethodPackageName = Settings.Secure.getString(
                     context.contentResolver,
                     Settings.Secure.DEFAULT_INPUT_METHOD

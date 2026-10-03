@@ -10,6 +10,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Outline
+import android.graphics.Path
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
@@ -18,6 +19,9 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.activity.compose.setContent
@@ -49,6 +53,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -71,7 +76,9 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -86,6 +93,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.xposed.wetypehook.wetype.graphics.WeTypeHyperMaterial
+import com.xposed.wetypehook.wetype.graphics.SvgPathImporter
 import com.xposed.wetypehook.wetype.graphics.WeTypeBloomStrokeDrawable
 import com.xposed.wetypehook.wetype.graphics.WeTypeCornerRadii
 import com.xposed.wetypehook.wetype.graphics.createWeTypeContinuousRoundedPath
@@ -479,6 +487,8 @@ private fun WeTypeSettingsScreen(
     var toolbarIconBgOpacity by rememberSaveable {
         mutableIntStateOf(snapshot.toolbarIconBgOpacity)
     }
+    var customIconPath by rememberSaveable { mutableStateOf(snapshot.customIconPath) }
+    var iconScale by rememberSaveable { mutableFloatStateOf(snapshot.iconScale) }
     var disableHotUpdate by rememberSaveable {
         mutableStateOf(snapshot.disableHotUpdate)
     }
@@ -558,6 +568,8 @@ private fun WeTypeSettingsScreen(
                 ?: WeTypeSettings.DEFAULT_CANDIDATE_PINYIN_LEFT_MARGIN_DP,
             toolbarIconBgOpacity = toolbarIconBgOpacity,
             appearanceColors = currentAppearanceColors(),
+            customIconPath = customIconPath,
+            iconScale = iconScale,
             disableHotUpdate = disableHotUpdate,
             hyperMaterialEnabled = hyperMaterialEnabled,
             glassOverrides = glassOverridesToSave,
@@ -588,6 +600,8 @@ private fun WeTypeSettingsScreen(
             WeTypeSettings.DEFAULT_CANDIDATE_BACKGROUND_LEFT_MARGIN_DP.toString()
         candidatePinyinLeftMarginDp = WeTypeSettings.DEFAULT_CANDIDATE_PINYIN_LEFT_MARGIN_DP.toString()
         toolbarIconBgOpacity = WeTypeSettings.DEFAULT_TOOLBAR_ICON_BG_OPACITY
+        customIconPath = WeTypeSettings.DEFAULT_CUSTOM_ICON_PATH
+        iconScale = WeTypeSettings.DEFAULT_ICON_SCALE
         disableHotUpdate = WeTypeSettings.DEFAULT_DISABLE_HOT_UPDATE
         appearanceGroups.forEachIndexed { index, group ->
             appearanceGroupColors[index] = group.defaultColor
@@ -868,15 +882,37 @@ private fun WeTypeSettingsScreen(
                             onValueChange = { toolbarIconBgOpacity = it }
                         )
 
+                        SliderPreferenceItem(
+                            title = stringResource(R.string.settings_icon_scale_title),
+                            value = iconScale,
+                            range = WeTypeSettings.MIN_ICON_SCALE..WeTypeSettings.MAX_ICON_SCALE,
+                            step = 0.05f,
+                            format = { "${(it * 100).roundToInt()}%" },
+                            onValueChange = { iconScale = it }
+                        )
+
+                        IconShapePreferenceItem(
+                            value = customIconPath,
+                            onValueChange = { customIconPath = it },
+                            onReset = { customIconPath = WeTypeSettings.DEFAULT_CUSTOM_ICON_PATH }
+                        )
+
                         appearanceSectionGroups.forEach { group ->
                             val index = groupIndex(group.id)
                             AppearanceColorGroupEditor(
                                 title = group.displayName,
-                                summary = stringResource(
-                                    R.string.settings_appearance_color_group_summary,
-                                    group.entryCount,
-                                    formatArgb(group.defaultColor)
-                                ),
+                                summary = if (group.entryCount == 0) {
+                                    stringResource(
+                                        R.string.settings_module_color_summary,
+                                        formatArgb(group.defaultColor)
+                                    )
+                                } else {
+                                    stringResource(
+                                        R.string.settings_appearance_color_group_summary,
+                                        group.entryCount,
+                                        formatArgb(group.defaultColor)
+                                    )
+                                },
                                 color = appearanceGroupColors[index],
                                 onColorChange = { appearanceGroupColors[index] = it }
                             )
@@ -967,7 +1003,7 @@ private fun WeTypeSettingsScreen(
                             onClick = {
                                 val intent = Intent(
                                     Intent.ACTION_VIEW,
-                                    Uri.parse("https://github.com/NEORUAA/MIUI_IME_Unlock")
+                                    Uri.parse("https://github.com/NEORUAA/WeType_UI_Enhanced")
                                 )
                                 context.startActivity(intent)
                             }
@@ -1400,6 +1436,8 @@ private class HyperMaterialPreviewLayout(context: Context, overrides: GlassMater
     private var isDark = false
     private var cornerRadius = 0
     private var tintColor = Color.TRANSPARENT
+    private var outlineGeometry: Triple<Int, Int, WeTypeCornerRadii>? = null
+    private var outlinePath: Path? = null
 
     init {
         clipChildren = false
@@ -1407,6 +1445,12 @@ private class HyperMaterialPreviewLayout(context: Context, overrides: GlassMater
         // Native siblings give MIUI a local sampling source before the material RenderNode.
         addView(backdrop, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(panel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        panel.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outlinePath?.let(outline::setPath)
+            }
+        }
+        panel.clipToOutline = true
     }
 
     fun updateStyle(isDark: Boolean, cornerRadius: Int, tintColor: Int) {
@@ -1432,13 +1476,12 @@ private class HyperMaterialPreviewLayout(context: Context, overrides: GlassMater
         if (!isAttachedToWindow || width <= 0 || height <= 0) return
         val radius = cornerRadius * resources.displayMetrics.density
         val radii = WeTypeCornerRadii(radius, radius, 0f, 0f)
-        panel.outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(view: View, outline: Outline) {
-                outline.setPath(createWeTypeContinuousRoundedPath(view.width.toFloat(), view.height.toFloat(), radii))
-            }
+        val geometry = Triple(width, height, radii)
+        if (outlineGeometry != geometry) {
+            outlinePath = createWeTypeContinuousRoundedPath(width.toFloat(), height.toFloat(), radii)
+            outlineGeometry = geometry
+            panel.invalidateOutline()
         }
-        panel.clipToOutline = true
-        panel.invalidateOutline()
         if (material.apply(isDark, tintColor)) material.updateGeometry(radii)
         else panel.setBackgroundColor(WeTypeHyperMaterial.fallbackColor(isDark))
     }
@@ -1462,55 +1505,57 @@ private fun Modifier.weTypePreviewBloom(
 ): Modifier {
     val context = LocalContext.current
     val density = LocalDensity.current
-    val previewContext = remember(context, isDark) {
+    val configuration = LocalConfiguration.current
+    val previewContext = remember(context, configuration, isDark) {
         createPreviewContext(context, isDark)
     }
     val cornerRadiusPx = with(density) { cornerRadius.toPx() }
-    return this.drawWithCache {
-        val previewCornerRadii = WeTypeCornerRadii(
-            topLeft = cornerRadiusPx,
-            topRight = cornerRadiusPx,
-            bottomRight = 0f,
-            bottomLeft = 0f
-        )
-        val widthPx = size.width.roundToInt()
-        val heightPx = size.height.roundToInt()
-        // The bloom overlay relies on clipPath + BlurMaskFilter + Path.op, which are not reliably
-        // supported on Compose's hardware-accelerated recording canvas and crash the preview. Render
-        // it once into an offscreen software bitmap (which supports every operation) and blit the
-        // result, keeping the preview pixel-accurate.
-        val overlayBitmap = if (edgeHighlightEnabled && widthPx > 0 && heightPx > 0) {
-            runCatching {
-                val bloomDrawable = WeTypeBloomStrokeDrawable(
-                    context = previewContext,
-                    cornerRadii = previewCornerRadii,
-                    surfaceColor = color,
-                    intensityScale = edgeHighlightIntensity / 100f
-                )
-                bloomDrawable.setBounds(0, 0, widthPx, heightPx)
-                val clipPath = createWeTypeContinuousRoundedPath(
-                    width = widthPx.toFloat(),
-                    height = heightPx.toFloat(),
-                    cornerRadii = previewCornerRadii
-                )
-                Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888).also { bitmap ->
-                    val bitmapCanvas = Canvas(bitmap)
-                    bitmapCanvas.clipPath(clipPath)
-                    bloomDrawable.draw(bitmapCanvas)
-                }
-            }.getOrNull()
-        } else {
-            null
-        }
+    val previewCornerRadii = remember(cornerRadiusPx) {
+        WeTypeCornerRadii(cornerRadiusPx, cornerRadiusPx, 0f, 0f)
+    }
+    // Color/intensity changes reuse the expensive shadow paths and blur filters.
+    val bloomDrawable = remember(previewContext, previewCornerRadii) {
+        WeTypeBloomStrokeDrawable(previewContext, previewCornerRadii, color, edgeHighlightIntensity / 100f)
+    }
+    val bloomModifier = remember(
+        bloomDrawable, color, edgeHighlightEnabled, edgeHighlightIntensity
+    ) {
+        Modifier.drawWithCache {
+            val widthPx = size.width.roundToInt()
+            val heightPx = size.height.roundToInt()
+            // The bloom overlay relies on clipPath + BlurMaskFilter + Path.op, which are not reliably
+            // supported on Compose's hardware-accelerated recording canvas and crash the preview. Render
+            // it once into an offscreen software bitmap (which supports every operation) and blit the
+            // result, keeping the preview pixel-accurate.
+            val overlayBitmap = if (edgeHighlightEnabled && widthPx > 0 && heightPx > 0) {
+                runCatching {
+                    bloomDrawable.updateStyle(color, edgeHighlightIntensity / 100f)
+                    bloomDrawable.setBounds(0, 0, widthPx, heightPx)
+                    val clipPath = createWeTypeContinuousRoundedPath(
+                        width = widthPx.toFloat(),
+                        height = heightPx.toFloat(),
+                        cornerRadii = previewCornerRadii
+                    )
+                    Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888).also { bitmap ->
+                        val bitmapCanvas = Canvas(bitmap)
+                        bitmapCanvas.clipPath(clipPath)
+                        bloomDrawable.draw(bitmapCanvas)
+                    }
+                }.getOrNull()
+            } else {
+                null
+            }
 
-        onDrawWithContent {
-            drawContent()
-            val bitmap = overlayBitmap ?: return@onDrawWithContent
-            drawIntoCanvas { canvas ->
-                canvas.nativeCanvas.drawBitmap(bitmap, 0f, 0f, null)
+            onDrawWithContent {
+                drawContent()
+                val bitmap = overlayBitmap ?: return@onDrawWithContent
+                drawIntoCanvas { canvas ->
+                    canvas.nativeCanvas.drawBitmap(bitmap, 0f, 0f, null)
+                }
             }
         }
     }
+    return this.then(bloomModifier)
 }
 
 private fun createPreviewContext(baseContext: Context, isDark: Boolean): Context {
@@ -1520,6 +1565,121 @@ private fun createPreviewContext(baseContext: Context, isDark: Boolean): Context
                 if (isDark) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO
     }
     return baseContext.createConfigurationContext(configuration)
+}
+
+@Composable
+private fun IconShapePreferenceItem(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onReset: () -> Unit
+) {
+    val context = LocalContext.current
+    val resources = LocalResources.current
+    // 设置界面也会以 ComponentDialog 形式渲染在宿主进程中，此时没有 ActivityResultRegistryOwner，
+    // 文件选择改由宿主 Activity 发起，结果经 HostActivityResultBridge 回传。
+    val registryOwner = LocalActivityResultRegistryOwner.current
+    val hostActivity = remember(context) { context.findHostActivity() }
+
+    fun applyPickedSvg(uri: Uri?) {
+        val text = uri?.let { picked ->
+            runCatching {
+                context.contentResolver.openInputStream(picked)
+                    ?.use { stream -> stream.readBytes().decodeToString() }
+            }.getOrNull()
+        }
+        val paths = text?.let(SvgPathImporter::extractPaths).orEmpty()
+        if (paths.isEmpty()) {
+            Toast.makeText(
+                context,
+                R.string.settings_icon_shape_import_empty,
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        // Keep the document: extracting only d would discard transforms and fill rules.
+        onValueChange(requireNotNull(text))
+        Toast.makeText(
+            context,
+            resources.getString(R.string.settings_icon_shape_imported, paths.size),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    val svgPicker = registryOwner?.let {
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.OpenDocument()
+        ) { uri ->
+            applyPickedSvg(uri)
+        }
+    }
+    val hostSvgLauncher: (() -> Unit)? = if (svgPicker == null && hostActivity != null) {
+        {
+            val requestCode = HostActivityResultBridge.register { resultCode, uri ->
+                if (resultCode == Activity.RESULT_OK) applyPickedSvg(uri)
+            }
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+            }
+            runCatching { hostActivity.startActivityForResult(intent, requestCode) }
+                .onFailure { error ->
+                    HostActivityResultBridge.dispatch(requestCode, Activity.RESULT_CANCELED, null)
+                    Toast.makeText(
+                        context,
+                        error.message ?: error.javaClass.simpleName,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+        }
+    } else {
+        null
+    }
+    val launchSvgPicker: (() -> Unit)? = when {
+        svgPicker != null -> ({ svgPicker.launch(arrayOf("image/svg+xml", "image/*")) })
+        hostSvgLauncher != null -> hostSvgLauncher
+        else -> null
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.settings_icon_shape_title),
+            style = MiuixTheme.textStyles.main
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = stringResource(R.string.settings_icon_shape_desc),
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            style = MiuixTheme.textStyles.body2
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        TextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = stringResource(R.string.settings_icon_shape_label),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        if (launchSvgPicker != null) {
+            BasicComponent(
+                title = stringResource(R.string.settings_icon_shape_import),
+                titleColor = BasicComponentDefaults.titleColor(
+                    color = MiuixTheme.colorScheme.primary
+                ),
+                onClick = launchSvgPicker
+            )
+        }
+        BasicComponent(
+            title = stringResource(R.string.settings_icon_shape_reset),
+            titleColor = BasicComponentDefaults.titleColor(
+                color = MiuixTheme.colorScheme.primary
+            ),
+            onClick = onReset
+        )
+    }
 }
 
 @Composable

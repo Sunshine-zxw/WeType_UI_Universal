@@ -24,6 +24,7 @@ private val OVERLAY_KEYBOARDS = setOf(
     SETTINGS_KEYBOARD,
     "com.tencent.wetype.plugin.hld.keyboard.selfdraw.S11EmojiKeyboard",
     "com.tencent.wetype.plugin.hld.keyboard.S15CustomPhraseAndClipboardKeyboard",
+    "com.tencent.wetype.plugin.hld.keyboard.S29ClipboardCleanRecordKeyboard",
     "com.tencent.wetype.plugin.hld.keyboard.S34ClipboardBombKeyboard",
     "com.tencent.wetype.plugin.hld.keyboard.S35RequestAIKeyboard"
 )
